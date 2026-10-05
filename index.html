@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史复古 宾果盘</title>
+    <style>
+        :root {
+            --bg-color: #120d0a;
+            --grid-bg: #221610;
+            --card-bg: linear-gradient(135deg, #ebd1a4 0%, #c49a62 100%);
+            --card-border: #8b6233;
+            --card-opened-bg: linear-gradient(135deg, #fceabb 0%, #f8b500 50%, #c17a14 100%);
+            --gold-accent: #f3cf7a;
+            --gold-glow: rgba(243, 207, 122, 0.6);
+            --text-dark: #2a180b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(#2d1e14 1px, transparent 1px);
+            background-size: 20px 20px;
+            font-family: "Georgia", "Cinzel", "KaiTi", "STKaiti", serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 动态金粉背景 Canvas */
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* 主容器 */
+        .main-container {
+            position: relative;
+            z-index: 2;
+            padding: 20px;
+        }
+
+        /* 5x5 宾果网格外框 */
+        .bingo-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 14px;
+            width: 88vw;
+            max-width: 560px;
+            background: var(--grid-bg);
+            padding: 22px;
+            border-radius: 12px;
+            border: 3px solid #8b6233;
+            outline: 2px solid #3d2311;
+            box-shadow: 
+                0 0 35px rgba(0, 0, 0, 0.9),
+                inset 0 0 20px rgba(0, 0, 0, 0.8),
+                0 0 15px var(--gold-glow);
+        }
+
+        /* 单个格子卡牌 */
+        .bingo-cell {
+            aspect-ratio: 1 / 1;
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                        box-shadow 0.25s ease, 
+                        background 0.3s ease;
+            box-shadow: 
+                inset 0 1px 2px rgba(255, 255, 255, 0.5),
+                inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+                2px 4px 8px rgba(0, 0, 0, 0.5);
+            text-shadow: 1px 1px 0px rgba(255, 255, 255, 0.4);
+        }
+
+        .bingo-cell:hover {
+            transform: translateY(-4px) scale(1.03);
+            box-shadow: 
+                0 6px 15px rgba(0, 0, 0, 0.6),
+                0 0 12px var(--gold-glow);
+            border-color: var(--gold-accent);
+        }
+
+        .bingo-cell:active {
+            transform: translateY(-1px) scale(0.98);
+        }
+
+        /* 已点击状态（保持1-25数字，转为耀眼金光材质） */
+        .bingo-cell.opened {
+            background: var(--card-opened-bg);
+            border-color: #fff0a8;
+            color: #200f02;
+            font-size: 2.1rem;
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+            box-shadow: 
+                0 0 15px var(--gold-glow),
+                inset 0 0 8px rgba(255, 255, 255, 0.8),
+                inset 0 -3px 6px rgba(139, 87, 10, 0.6);
+            animation: pulseGlow 2s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 10px var(--gold-glow), inset 0 0 8px rgba(255, 255, 255, 0.8); }
+            100% { box-shadow: 0 0 20px rgba(248, 181, 0, 0.9), inset 0 0 12px rgba(255, 255, 255, 0.9); }
+        }
+
+        /* 弹窗遮罩 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        /* 弹窗图片容器 */
+        .modal-content {
+            position: relative;
+            max-width: 90vw;
+            max-height: 88vh;
+            background: #1a100a;
+            border: 3px solid var(--gold-accent);
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 0 35px rgba(243, 207, 122, 0.3), 0 20px 50px rgba(0,0,0,0.9);
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-content img {
+            max-width: 100%;
+            max-height: 82vh;
+            display: block;
+            border: 1px solid #4d3319;
+            border-radius: 2px;
+        }
+
+        /* 关闭按钮 */
+        .close-btn {
+            position: absolute;
+            top: -16px;
+            right: -16px;
+            background: linear-gradient(135deg, #a82424, #611010);
+            color: #fceabb;
+            border: 2px solid var(--gold-accent);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 1.4rem;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .close-btn:hover {
+            transform: scale(1.15) rotate(90deg);
+            background: linear-gradient(135deg, #c82828, #801414);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 粒子背景 -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- 宾果 5x5 盘面 -->
+    <div class="main-container">
+        <div class="bingo-grid" id="bingoGrid"></div>
+    </div>
+
+    <!-- 图片展示弹窗 -->
+    <div class="modal-overlay" id="imageModal">
+        <div class="modal-content">
+            <button class="close-btn" id="closeBtn">&times;</button>
+            <img id="modalImage" src="" alt="展示图片">
+        </div>
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('bingoGrid');
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const closeBtn = document.getElementById('closeBtn');
+
+        // 1. 生成 1 到 25 的图片编号数组并进行洗牌打乱
+        const imageIndices = Array.from({ length: 25 }, (_, i) => i + 1);
+        
+        // Fisher-Yates 洗牌算法：确保 1.png - 25.png 随机分配且不重复
+        for (let i = imageIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [imageIndices[i], imageIndices[j]] = [imageIndices[j], imageIndices[i]];
+        }
+
+        // 2. 生成 1 到 25 的格子
+        for (let i = 1; i <= 25; i++) {
+            const cell = document.createElement('div');
+            cell.classList.add('bingo-cell');
+            cell.innerText = i; // 格子上依然保持显示数字 1-25
+            
+            // 当前格子分配到的随机 png 图片编号
+            const randomImageNum = imageIndices[i - 1];
+
+            cell.addEventListener('click', (e) => {
+                // 标记为已点击（高亮亮金状态，数字不变）
+                cell.classList.add('opened');
+                
+                // 触发点击火花特效
+                createSparks(e.clientX, e.clientY);
+                
+                // 加载打乱后对应的 .png 图片
+                modalImg.src = `${randomImageNum}.png`;
+                modal.classList.add('active');
+            });
+
+            gridContainer.appendChild(cell);
+        }
+
+        // 关闭弹窗逻辑
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        closeBtn.addEventListener('click', closeModal);
+
+        // 点击背景遮罩或图片本身即可关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target === modalImg) {
+                closeModal();
+            }
+        });
+
+        // 按 ESC 键关闭
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        /* ================= 悬浮金粉与点击火花动画 ================= */
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+        let sparks = [];
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 漂浮背景微粒
+        for (let i = 0; i < 45; i++) {
+            particles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                radius: Math.random() * 2 + 0.5,
+                alpha: Math.random() * 0.6 + 0.2,
+                vy: -Math.random() * 0.4 - 0.1,
+                vx: (Math.random() - 0.5) * 0.3
+            });
+        }
+
+        // 点击产生的散落火花
+        function createSparks(x, y) {
+            for (let i = 0; i < 20; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4 + 1.5;
+                sparks.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    alpha: 1,
+                    radius: Math.random() * 2.5 + 1
+                });
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 绘制漂浮微粒
+            particles.forEach(p => {
+                p.y += p.vy;
+                p.x += p.vx;
+                if (p.y < 0) p.y = height;
+                if (p.x < 0) p.x = width;
+                if (p.x > width) p.x = 0;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(243, 207, 122, ${p.alpha})`;
+                ctx.fill();
+            });
+
+            // 绘制点击火花
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                const s = sparks[i];
+                s.x += s.vx;
+                s.y += s.vy;
+                s.vy += 0.08; // 重力效果
+                s.alpha -= 0.025;
+
+                if (s.alpha <= 0) {
+                    sparks.splice(i, 1);
+                    continue;
+                }
+
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 230, 150, ${s.alpha})`;
+                ctx.fill();
+            }
+
+            requestAnimationFrame(render);
+        }
+        render();
+    </script>
+</body>
+</html>
